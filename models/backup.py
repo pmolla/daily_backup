@@ -1,47 +1,46 @@
 import os
-import shutil
-from odoo import models, fields, api
-import paramiko  # For SFTP
+import subprocess
+from odoo import models, api
 
 class BackupToLocal(models.Model):
-    _name = 'backup.to.local'
-    _description = 'Backup Exporter'
+    _name = 'backup.to.remote'
+    _description = 'Backup Exporter to Remote PC'
 
     @api.model
     def export_backup(self):
-        # 1. Backup Directory
-        backup_dir = "/home/odoo/backup/"  # Odoo.sh backup location
+        # 1. Backup Directory (Temporary Location)
+        backup_dir = "/tmp/odoo_backups/"
         os.makedirs(backup_dir, exist_ok=True)
 
-        # 2. Create the backup
+        # 2. Create the backup file
         db_name = self.env.cr.dbname
-        backup_file = os.path.join(backup_dir, f"{db_name}_backup.zip")
+        backup_file = os.path.join(backup_dir, f"{db_name}_dump.sql")
 
-        with open(backup_file, 'wb') as backup:
-            self.env['ir.actions.report']._backup_database(backup)
+        # Use pg_dump to create the database backup
+        dump_command = [
+            'pg_dump', '--no-owner', '--file', backup_file, db_name
+        ]
+        try:
+            subprocess.run(dump_command, check=True)
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Error creating database dump: {e}")
 
-        # 3. Transfer to Local PC (via SFTP)
-        local_folder = "/path/to/your/local/folder"
-        self.sftp_transfer(backup_file, local_folder)
+        # 3. Transfer to Remote PC using SCP
+        remote_user = "pablo.molla.ar"
+        remote_host = "35.232.146.42"
+        remote_path = "/home/pablo_molla/amic"
+        self.transfer_backup_scp(backup_file, remote_user, remote_host, remote_path)
 
-        # 4. Cleanup
+        # 4. Cleanup Temporary Backup
         if os.path.exists(backup_file):
             os.remove(backup_file)
 
-    def sftp_transfer(self, backup_file, local_folder):
-        sftp_host = 'your_pc_ip'
-        sftp_port = 22
-        sftp_user = 'your_username'
-        sftp_password = 'your_password'
-
+    def transfer_backup_scp(self, backup_file, remote_user, remote_host, remote_path):
+        scp_command = [
+            'sshpass', '-p', 'pimpollo72',  # Pass the password
+            'scp', backup_file, f"{remote_user}@{remote_host}:{remote_path}"
+        ]
         try:
-            transport = paramiko.Transport((sftp_host, sftp_port))
-            transport.connect(username=sftp_user, password=sftp_password)
-            sftp = paramiko.SFTPClient.from_transport(transport)
-
-            remote_file = os.path.join(local_folder, os.path.basename(backup_file))
-            sftp.put(backup_file, remote_file)
-            sftp.close()
-            transport.close()
-        except Exception as e:
-            raise Exception(f"SFTP Error: {e}")
+            subprocess.run(scp_command, check=True)
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Error transferring file via SCP: {e}")
