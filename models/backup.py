@@ -3,7 +3,7 @@ import subprocess
 from odoo import models, api
 
 class BackupToLocal(models.Model):
-    _name = 'backup.to.remote'
+    _name = 'backup.to.local'
     _description = 'Backup Exporter to Remote PC'
 
     @api.model
